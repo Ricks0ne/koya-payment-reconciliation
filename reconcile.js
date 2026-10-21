@@ -1,18 +1,43 @@
-// Payment reconciliation.
-//
-// Reads payments.jsonl and works out how much money we actually collected.
-// Run:  node reconcile.js
-
 const fs = require("fs");
 
 let total = 0;
 let count = 0;
 
 const lines = fs.readFileSync("payments.jsonl", "utf8").split("\n").filter((l) => l.length > 0);
+const latestEvents = {};
+
 for (const line of lines) {
-  const event = JSON.parse(line);
+  let event;
+  
+  try {
+    event = JSON.parse(line);
+  } catch (e) {
+    continue; 
+  }
+
+  if (!event.txn_id) {
+    continue;
+  }
+
+  if (!latestEvents[event.txn_id]) {
+    latestEvents[event.txn_id] = event;
+  } else {
+    const currentTs = new Date(event.ts).getTime();
+    const storedTs = new Date(latestEvents[event.txn_id].ts).getTime();
+    
+    if (currentTs > storedTs) {
+      latestEvents[event.txn_id] = event;
+    }
+  }
+}
+
+for (const event of Object.values(latestEvents)) {
   if (event.status === "success") {
-    total += Number(event.amount);
+    // Convert to string, remove commas, and parse as a float to prevent NaN errors
+    const cleanAmount = parseFloat(String(event.amount).replace(/,/g, ""));
+    if (!isNaN(cleanAmount)) {
+      total += cleanAmount;
+    }
     count += 1;
   }
 }
